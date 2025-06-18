@@ -18,4 +18,5 @@ void create_fun_table(char *name, fun_vars vars, bool *table, int table_size);
 bool eval_fun(fun *f, bool *values);
 void print_table(fun *f);
 
+
 #endif

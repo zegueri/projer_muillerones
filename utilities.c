@@ -142,3 +142,4 @@ void print_table(fun *f)
     printf("\n");
 }
 
+
