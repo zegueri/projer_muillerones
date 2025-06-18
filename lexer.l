@@ -14,10 +14,11 @@ LIST (?i:list)
 TABLE (?i:table)
 VARLIST (?i:varlist)
 
-AND (?i:and)
-OR (?i:or)
-NOT (?i:not)
-XOR (?i:xor)
+AND (?i:and)|&&|&
+OR (?i:or)|\|\||\|
+NOT (?i:not)|!
+XOR (?i:xor)|\^
+IMPL =>
 
 NAME [a-zA-Z_][a-zA-Z0-9_]*
 BOOL 1|0
@@ -35,6 +36,7 @@ BOOL 1|0
 {OR} {return OR;}
 {NOT} {return NOT;}
 {XOR} {return XOR;}
+{IMPL} {return IMPL;}
 
 {NAME} { yylval.string = strdup(yytext); return NAME;}
 {BOOL} {return BOOL;}

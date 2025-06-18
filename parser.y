@@ -1,159 +1,100 @@
 %{
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include "utilities.h"
+
 extern int yylex(void);
-extern void yyerror(const char*);
+extern void yyerror(const char *s);
+
+static int bool_list_len(bool *b) {
+    int n=0; while(b[n]!=-1) n++; return n;
+}
 %}
 
 %code requires {
-    #include "utilities.h"
-
-    #define N_VARS 8
+    #include "models.h"
+    #include <stdbool.h>
 }
 
-%union { 
+%union {
     bool boolean;
-    char** body;
+    char *string;
+    expr *exprptr;
+    bool *boollist;
     fun_vars fv;
-    char* string;
 }
 
-%token <string> NAME DEFINE LIST VARLIST EVAL AT TABLE FORMULA
-%token <string> AND OR NOT XOR
+%token <string> NAME
 %token <boolean> BOOL
-
-%start s
-%type <boolean> s command
-%type <fv> vars vars_array
-%type <body> formule_ou_table formula truth_table boolean_vars
+%token DEFINE LIST VARLIST EVAL AT TABLE FORMULA
+%token AND OR NOT XOR IMPL
+%left OR
+%left XOR
+%left AND
+%right NOT
+%right IMPL
+%type <exprptr> formula expr
+%type <boollist> bool_list
+%type <fv> opt_vars var_names
 
 %%
-s : command {
-        printf("On a une seule expression.\n");
-    }
-    | command s {
-        printf("Encore une autre expression.\n");
-    }
-    | error s {
-        yyerror("Erreur de syntaxe dans l'expression.");
-        yyerrok; // On continue l'analyse après une erreur
-    }
+input:
+    /* empty */
+  | input command
+  ;
+
+command:
+      DEFINE NAME opt_vars '=' formula       { create_fun_formula($2, $3, $5); }
+    | DEFINE NAME opt_vars '=' '{' bool_list '}' { create_fun_table($2, $3, $6, bool_list_len($6)); }
+    | LIST                                   { list_functions(); }
+    | VARLIST NAME                           { fun *f=find_fun($2); if(f) print_varlist(f); else printf("unknown\n"); }
+    | EVAL NAME AT bool_list                 {
+          fun *f=find_fun($2);
+          if(f){
+              int n=bool_list_len($4);
+              bool vals[MAX_VARS]={0};
+              for(int i=0;i<n && i<MAX_VARS; i++) vals[i]=$4[i];
+              printf("%d\n", eval_fun(f, vals));
+          }
+      }
+    | TABLE NAME                             { fun *f=find_fun($2); if(f) print_table(f); }
     ;
 
-command : 
-    DEFINE define;
-
-define :
-    NAME vars '=' formule_ou_table {
-        create_fun($1, $2, $4);
-    }
-
-vars :
-    %empty {
-        printf("On a pas de variables spécifiées.\n");
-        char* vars[8] = {"x", "y", "z", "s", "t", "u", "v", "w"};
-        
-        fun_vars fv;
-        fv.n_vars = 8;
-        fv.vars = vars;
-        $$ = fv;
-    }
-    | '(' vars_array ')' {
-        $$ = $2;
-    }
+opt_vars:
+      '(' var_names ')' { $$ = $2; }
+    | /* empty */      { fun_vars fv; fv.n_vars=0; fv.vars=NULL; $$=fv; }
     ;
 
-vars_array :
-    NAME {
-        char *tab[8];
-        tab[0] = $1;
-        
-        fun_vars fv;
-        fv.n_vars = 1;
-        fv.vars = tab;
-
-        $$ = fv;
-    }
-    | vars_array ',' NAME {
-        if ($1.n_vars >= 8) {
-            yyerror("Trop de variables, max = 8.");
-            return 1;
-        }
-
-        $1.n_vars++;
-        $1.vars[$1.n_vars - 1] = $3;
-        $$ = $1;
-    }
+var_names:
+      NAME               { fun_vars fv; fv.n_vars=1; fv.vars=malloc(sizeof(char*)); fv.vars[0]=strdup($1); $$=fv; }
+    | var_names ',' NAME { $1.n_vars++; $1.vars=realloc($1.vars,sizeof(char*)*$1.n_vars); $1.vars[$1.n_vars-1]=strdup($3); $$=$1; }
     ;
 
-// TODO : renommer wlh jsp comment appeler ça
-formule_ou_table :
-    formula {
-        printf("On a une formule logique.\n");
-    }
-    | truth_table {
-        printf("On a une table.\n");
-    }
+bool_list:
+      /* empty */        { bool *b=malloc(sizeof(bool)); b[0]=-1; $$=b; }
+    | BOOL              { bool *b=malloc(2*sizeof(bool)); b[0]=$1; b[1]=-1; $$=b; }
+    | bool_list BOOL    {
+          int n=0; while($1[n]!=-1) n++; $1=realloc($1,(n+2)*sizeof(bool)); $1[n]=$2; $1[n+1]=-1; $$=$1; }
     ;
 
-formula :
-    BOOL {
-        printf("On a une formule booléenne : %s\n", $1 ? "true" : "false");
-    }
-    | NAME {
-        printf("On a une formule avec une variable : %s\n", $1);
-    }
-    expression {
-        printf("On a une expression.\n");
-    }
-    | '(' formula ')' {
-        printf("On a une formule entre parenthèses.\n");
-    }
-
-expression :
-    NAME OR NAME {
-        printf("On a une expression avec OR : %s OR %s\n", $1, $3);
-    }
-    | NAME AND NAME {
-        printf("On a une expression avec AND : %s AND %s\n", $1, $3);
-    }
-    | NAME NOT {
-        printf("On a une expression avec NOT : NOT %s\n", $2);
-    }
-    | NAME XOR NAME {
-        printf("On a une expression avec XOR : %s XOR %s\n", $1, $3);
-    }
-
-truth_table :
-    '{' boolean_vars '}' {
-        printf("On a une table de vérité.\n");
-    }
-
-boolean_vars : 
-    BOOL {}
-    | boolean_vars ' ' BOOL
-    | %empty
+formula:
+      expr                { $$ = $1; }
     ;
 
-list :
-    LIST {
-        printf("TODO print liste de fonctions.\n");
-    }
-
-varlist :
-    VARLIST {
-        printf("TODO print liste de variables.\n");
-    }
-
-eval :
-    EVAL NAME AT boolean_vars{
-        printf("TODO évaluer la formule.\n");
-    }
-
-table :
-    TABLE NAME {
-        printf("TODO afficher la table de vérité pour %s.\n", $2);
-    }
+expr:
+      BOOL                { expr *e=malloc(sizeof(expr)); e->type=EXPR_CONST; e->u.constant=$1; $$=e; }
+    | NAME                { expr *e=malloc(sizeof(expr)); e->type=EXPR_VAR; e->u.var=strdup($1); $$=e; }
+    | NOT expr            { expr *e=malloc(sizeof(expr)); e->type=EXPR_NOT; e->u.unary=$2; $$=e; }
+    | expr AND expr       { expr *e=malloc(sizeof(expr)); e->type=EXPR_AND; e->u.bin.left=$1; e->u.bin.right=$3; $$=e; }
+    | expr OR expr        { expr *e=malloc(sizeof(expr)); e->type=EXPR_OR; e->u.bin.left=$1; e->u.bin.right=$3; $$=e; }
+    | expr XOR expr       { expr *e=malloc(sizeof(expr)); e->type=EXPR_XOR; e->u.bin.left=$1; e->u.bin.right=$3; $$=e; }
+    | expr IMPL expr      { expr *e=malloc(sizeof(expr)); e->type=EXPR_IMPL; e->u.bin.left=$1; e->u.bin.right=$3; $$=e; }
+    | '(' expr ')'        { $$=$2; }
+    ;
 %%
 
 void yyerror(const char *s) {
-    fprintf(stderr, "Error: %s\n", s);
+    fprintf(stderr, "%s\n", s);
 }

@@ -1,0 +1,15 @@
+define f = x or !z
+define g(y,x) = x => y
+define h(a,b,c) = { 0 1 1 0 1 0 0 1 }
+define nand = { 1 1 1 0 }
+list
+varlist f
+varlist g
+varlist h
+varlist nand
+eval g at 0 1
+eval h at 1 1 0
+table f
+table g
+table h
+table nand
